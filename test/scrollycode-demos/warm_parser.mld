@@ -1,0 +1,384 @@
+{0 Building a JSON Parser}
+
+@scrolly.warm Building a JSON Parser in OCaml
+{ol
+{li
+  {b Defining the Value Type}
+
+  Every parser starts with a type. JSON has six kinds of values:
+  null, booleans, numbers, strings, arrays, and objects.
+  We encode this directly as an OCaml variant.
+
+  {[
+type json =
+  | Null
+  | Bool of bool
+  | Number of float
+  | String of string
+  | Array of json list
+  | Object of (string * json) list
+  ]}
+}
+{li
+  {b A Simple Scanner}
+
+  Before parsing structure, we need to skip whitespace and
+  peek at the next meaningful character. Our scanner works
+  on a string with a mutable position index.
+
+  {[
+type json =
+  | Null
+  | Bool of bool
+  | Number of float
+  | String of string
+  | Array of json list
+  | Object of (string * json) list
+
+type scanner = {
+  input : string;
+  mutable pos : int;
+}
+
+let peek s =
+  while s.pos < String.length s.input
+        && s.input.[s.pos] = ' ' do
+    s.pos <- s.pos + 1
+  done;
+  if s.pos < String.length s.input
+  then Some s.input.[s.pos]
+  else None
+
+let advance s = s.pos <- s.pos + 1
+  ]}
+}
+{li
+  {b Parsing Strings}
+
+  JSON strings are delimited by double quotes. We scan character
+  by character, collecting into a buffer. This handles the simple
+  case without escape sequences.
+
+  {[
+type json =
+  | Null
+  | Bool of bool
+  | Number of float
+  | String of string
+  | Array of json list
+  | Object of (string * json) list
+
+type scanner = {
+  input : string;
+  mutable pos : int;
+}
+
+let peek s =
+  while s.pos < String.length s.input
+        && s.input.[s.pos] = ' ' do
+    s.pos <- s.pos + 1
+  done;
+  if s.pos < String.length s.input
+  then Some s.input.[s.pos]
+  else None
+
+let advance s = s.pos <- s.pos + 1
+
+let parse_string s =
+  advance s;
+  let buf = Buffer.create 64 in
+  while s.pos < String.length s.input
+        && s.input.[s.pos] <> '"' do
+    Buffer.add_char buf s.input.[s.pos];
+    advance s
+  done;
+  advance s;
+  Buffer.contents buf
+  ]}
+}
+{li
+  {b Parsing Numbers}
+
+  Numbers in JSON can be integers or floats. We collect consecutive
+  digit and dot characters, then use float_of_string to parse them.
+  A production parser would handle exponents too.
+
+  {[
+type json =
+  | Null
+  | Bool of bool
+  | Number of float
+  | String of string
+  | Array of json list
+  | Object of (string * json) list
+
+type scanner = {
+  input : string;
+  mutable pos : int;
+}
+
+let peek s =
+  while s.pos < String.length s.input
+        && s.input.[s.pos] = ' ' do
+    s.pos <- s.pos + 1
+  done;
+  if s.pos < String.length s.input
+  then Some s.input.[s.pos]
+  else None
+
+let advance s = s.pos <- s.pos + 1
+
+let parse_string s =
+  advance s;
+  let buf = Buffer.create 64 in
+  while s.pos < String.length s.input
+        && s.input.[s.pos] <> '"' do
+    Buffer.add_char buf s.input.[s.pos];
+    advance s
+  done;
+  advance s;
+  Buffer.contents buf
+
+let is_digit c = c >= '0' && c <= '9'
+
+let parse_number s =
+  let start = s.pos in
+  while s.pos < String.length s.input
+        && (is_digit s.input.[s.pos]
+            || s.input.[s.pos] = '.'
+            || s.input.[s.pos] = '-') do
+    advance s
+  done;
+  float_of_string
+    (String.sub s.input start (s.pos - start))
+  ]}
+}
+{li
+  {b The Recursive Core}
+
+  Now the magic: parse_value dispatches on the next character
+  to decide what kind of JSON value to parse. For atoms like
+  null, true, false we match literal strings. For compound
+  structures, we recurse.
+
+  {[
+type json =
+  | Null
+  | Bool of bool
+  | Number of float
+  | String of string
+  | Array of json list
+  | Object of (string * json) list
+
+type scanner = {
+  input : string;
+  mutable pos : int;
+}
+
+let peek s =
+  while s.pos < String.length s.input
+        && s.input.[s.pos] = ' ' do
+    s.pos <- s.pos + 1
+  done;
+  if s.pos < String.length s.input
+  then Some s.input.[s.pos]
+  else None
+
+let advance s = s.pos <- s.pos + 1
+
+let parse_string s =
+  advance s;
+  let buf = Buffer.create 64 in
+  while s.pos < String.length s.input
+        && s.input.[s.pos] <> '"' do
+    Buffer.add_char buf s.input.[s.pos];
+    advance s
+  done;
+  advance s;
+  Buffer.contents buf
+
+let is_digit c = c >= '0' && c <= '9'
+
+let parse_number s =
+  let start = s.pos in
+  while s.pos < String.length s.input
+        && (is_digit s.input.[s.pos]
+            || s.input.[s.pos] = '.'
+            || s.input.[s.pos] = '-') do
+    advance s
+  done;
+  float_of_string
+    (String.sub s.input start (s.pos - start))
+
+let expect s c =
+  match peek s with
+  | Some c' when c' = c -> advance s
+  | _ -> failwith "unexpected character"
+
+let rec parse_value s =
+  match peek s with
+  | Some '"' -> String (parse_string s)
+  | Some c when is_digit c || c = '-' ->
+      Number (parse_number s)
+  | Some 't' ->
+      s.pos <- s.pos + 4; Bool true
+  | Some 'f' ->
+      s.pos <- s.pos + 5; Bool false
+  | Some 'n' ->
+      s.pos <- s.pos + 4; Null
+  | Some '[' -> parse_array s
+  | Some '{' -> parse_object s
+  | _ -> failwith "unexpected token"
+
+and parse_array s =
+  advance s;
+  let items = ref [] in
+  (match peek s with
+   | Some ']' -> advance s
+   | _ ->
+     items := [parse_value s];
+     while peek s = Some ',' do
+       advance s;
+       items := parse_value s :: !items
+     done;
+     expect s ']');
+  Array (List.rev !items)
+
+and parse_object s =
+  advance s;
+  let pairs = ref [] in
+  (match peek s with
+   | Some '}' -> advance s
+   | _ ->
+     let key = parse_string s in
+     expect s ':';
+     let value = parse_value s in
+     pairs := [(key, value)];
+     while peek s = Some ',' do
+       advance s;
+       let k = parse_string s in
+       expect s ':';
+       let v = parse_value s in
+       pairs := (k, v) :: !pairs
+     done;
+     expect s '}');
+  Object (List.rev !pairs)
+  ]}
+}
+{li
+  {b The Public API}
+
+  Finally we wrap the scanner in a clean top-level function.
+  Pass a string in, get a JSON value out. The entire parser
+  is about 80 lines of OCaml — no dependencies, no magic.
+
+  {[
+type json =
+  | Null
+  | Bool of bool
+  | Number of float
+  | String of string
+  | Array of json list
+  | Object of (string * json) list
+
+type scanner = {
+  input : string;
+  mutable pos : int;
+}
+
+let peek s =
+  while s.pos < String.length s.input
+        && s.input.[s.pos] = ' ' do
+    s.pos <- s.pos + 1
+  done;
+  if s.pos < String.length s.input
+  then Some s.input.[s.pos]
+  else None
+
+let advance s = s.pos <- s.pos + 1
+
+let parse_string s =
+  advance s;
+  let buf = Buffer.create 64 in
+  while s.pos < String.length s.input
+        && s.input.[s.pos] <> '"' do
+    Buffer.add_char buf s.input.[s.pos];
+    advance s
+  done;
+  advance s;
+  Buffer.contents buf
+
+let is_digit c = c >= '0' && c <= '9'
+
+let parse_number s =
+  let start = s.pos in
+  while s.pos < String.length s.input
+        && (is_digit s.input.[s.pos]
+            || s.input.[s.pos] = '.'
+            || s.input.[s.pos] = '-') do
+    advance s
+  done;
+  float_of_string
+    (String.sub s.input start (s.pos - start))
+
+let expect s c =
+  match peek s with
+  | Some c' when c' = c -> advance s
+  | _ -> failwith "unexpected character"
+
+let rec parse_value s =
+  match peek s with
+  | Some '"' -> String (parse_string s)
+  | Some c when is_digit c || c = '-' ->
+      Number (parse_number s)
+  | Some 't' ->
+      s.pos <- s.pos + 4; Bool true
+  | Some 'f' ->
+      s.pos <- s.pos + 5; Bool false
+  | Some 'n' ->
+      s.pos <- s.pos + 4; Null
+  | Some '[' -> parse_array s
+  | Some '{' -> parse_object s
+  | _ -> failwith "unexpected token"
+
+and parse_array s =
+  advance s;
+  let items = ref [] in
+  (match peek s with
+   | Some ']' -> advance s
+   | _ ->
+     items := [parse_value s];
+     while peek s = Some ',' do
+       advance s;
+       items := parse_value s :: !items
+     done;
+     expect s ']');
+  Array (List.rev !items)
+
+and parse_object s =
+  advance s;
+  let pairs = ref [] in
+  (match peek s with
+   | Some '}' -> advance s
+   | _ ->
+     let key = parse_string s in
+     expect s ':';
+     let value = parse_value s in
+     pairs := [(key, value)];
+     while peek s = Some ',' do
+       advance s;
+       let k = parse_string s in
+       expect s ':';
+       let v = parse_value s in
+       pairs := (k, v) :: !pairs
+     done;
+     expect s '}');
+  Object (List.rev !pairs)
+
+let parse input =
+  let s = { input; pos = 0 } in
+  let v = parse_value s in
+  v
+  ]}
+}
+}

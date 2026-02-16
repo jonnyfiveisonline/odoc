@@ -1,0 +1,403 @@
+{0 Building a Test Framework}
+
+@scrolly.notebook Building a Test Framework in OCaml
+{ol
+{li
+  {b A Single Assertion}
+
+  The simplest possible test: check that a condition holds.
+  If it fails, raise an exception with a message. This is
+  the foundation everything else builds on.
+
+  {[
+exception Test_failure of string
+
+let assert_equal ~expected ~actual msg =
+  if expected <> actual then
+    raise (Test_failure
+      (Printf.sprintf "%s: expected %s, got %s"
+        msg
+        (string_of_int expected)
+        (string_of_int actual)))
+  ]}
+}
+{li
+  {b Collecting Tests}
+
+  A test is a named function. We store tests in a mutable list
+  so they can be registered declaratively with a simple helper.
+  Each test is just a unit function that might raise.
+
+  {[
+exception Test_failure of string
+
+let assert_equal ~expected ~actual msg =
+  if expected <> actual then
+    raise (Test_failure
+      (Printf.sprintf "%s: expected %s, got %s"
+        msg
+        (string_of_int expected)
+        (string_of_int actual)))
+
+type test = {
+  name : string;
+  fn : unit -> unit;
+}
+
+let tests : test list ref = ref []
+
+let register name fn =
+  tests := { name; fn } :: !tests
+
+let () = register "addition" (fun () ->
+  assert_equal ~expected:4 ~actual:(2 + 2)
+    "two plus two")
+
+let () = register "multiplication" (fun () ->
+  assert_equal ~expected:6 ~actual:(2 * 3)
+    "two times three")
+  ]}
+}
+{li
+  {b A Test Runner}
+
+  The runner iterates through registered tests, catching
+  exceptions to report pass or fail. It counts results
+  and prints a summary at the end.
+
+  {[
+exception Test_failure of string
+
+let assert_equal ~expected ~actual msg =
+  if expected <> actual then
+    raise (Test_failure
+      (Printf.sprintf "%s: expected %s, got %s"
+        msg
+        (string_of_int expected)
+        (string_of_int actual)))
+
+type test = {
+  name : string;
+  fn : unit -> unit;
+}
+
+let tests : test list ref = ref []
+
+let register name fn =
+  tests := { name; fn } :: !tests
+
+type result =
+  | Pass
+  | Fail of string
+
+let run_one test =
+  try test.fn (); Pass
+  with
+  | Test_failure msg -> Fail msg
+  | exn -> Fail (Printexc.to_string exn)
+
+let run_all () =
+  let results =
+    List.rev !tests
+    |> List.map (fun t -> (t.name, run_one t))
+  in
+  let passed =
+    List.length
+      (List.filter
+        (fun (_, r) -> r = Pass) results)
+  in
+  let total = List.length results in
+  List.iter (fun (name, result) ->
+    match result with
+    | Pass ->
+        Printf.printf "  PASS  %s\n" name
+    | Fail msg ->
+        Printf.printf "  FAIL  %s: %s\n" name msg
+  ) results;
+  Printf.printf "\n%d/%d tests passed\n"
+    passed total;
+  if passed < total then exit 1
+  ]}
+}
+{li
+  {b Better Assertions}
+
+  Real frameworks need more than integer equality. We add
+  string comparison, boolean checks, and a generic raises
+  assertion that checks an exception is thrown.
+
+  {[
+exception Test_failure of string
+
+let assert_equal ~expected ~actual msg =
+  if expected <> actual then
+    raise (Test_failure
+      (Printf.sprintf "%s: expected %s, got %s"
+        msg
+        (string_of_int expected)
+        (string_of_int actual)))
+
+let assert_string_equal ~expected ~actual msg =
+  if expected <> actual then
+    raise (Test_failure
+      (Printf.sprintf
+        "%s: expected %S, got %S"
+        msg expected actual))
+
+let assert_true condition msg =
+  if not condition then
+    raise (Test_failure msg)
+
+let assert_raises fn msg =
+  try fn ();
+    raise (Test_failure
+      (msg ^ ": expected exception"))
+  with
+  | Test_failure _ as e -> raise e
+  | _ -> ()
+
+type test = {
+  name : string;
+  fn : unit -> unit;
+}
+
+let tests : test list ref = ref []
+
+let register name fn =
+  tests := { name; fn } :: !tests
+
+type result = Pass | Fail of string
+
+let run_one test =
+  try test.fn (); Pass
+  with
+  | Test_failure msg -> Fail msg
+  | exn -> Fail (Printexc.to_string exn)
+
+let run_all () =
+  let results =
+    List.rev !tests
+    |> List.map (fun t -> (t.name, run_one t))
+  in
+  let passed = List.length
+    (List.filter
+      (fun (_, r) -> r = Pass) results) in
+  let total = List.length results in
+  List.iter (fun (name, result) ->
+    match result with
+    | Pass ->
+        Printf.printf "  PASS  %s\n" name
+    | Fail msg ->
+        Printf.printf "  FAIL  %s: %s\n"
+          name msg
+  ) results;
+  Printf.printf "\n%d/%d tests passed\n"
+    passed total;
+  if passed < total then exit 1
+  ]}
+}
+{li
+  {b Test Suites}
+
+  As projects grow, tests need organization. We add a suite
+  concept that groups related tests under a name. Suites
+  can be nested and run independently.
+
+  {[
+exception Test_failure of string
+
+let assert_equal ~expected ~actual msg =
+  if expected <> actual then
+    raise (Test_failure
+      (Printf.sprintf "%s: expected %s, got %s"
+        msg
+        (string_of_int expected)
+        (string_of_int actual)))
+
+let assert_string_equal ~expected ~actual msg =
+  if expected <> actual then
+    raise (Test_failure
+      (Printf.sprintf "%s: expected %S, got %S"
+        msg expected actual))
+
+let assert_true condition msg =
+  if not condition then
+    raise (Test_failure msg)
+
+let assert_raises fn msg =
+  try fn ();
+    raise (Test_failure
+      (msg ^ ": expected exception"))
+  with Test_failure _ as e -> raise e | _ -> ()
+
+type test = { name : string; fn : unit -> unit }
+type result = Pass | Fail of string
+
+type suite = {
+  suite_name : string;
+  mutable suite_tests : test list;
+}
+
+let suites : suite list ref = ref []
+
+let create_suite name =
+  let s = { suite_name = name;
+            suite_tests = [] } in
+  suites := s :: !suites; s
+
+let add_test suite name fn =
+  suite.suite_tests <-
+    { name; fn } :: suite.suite_tests
+
+let run_one test =
+  try test.fn (); Pass
+  with
+  | Test_failure msg -> Fail msg
+  | exn -> Fail (Printexc.to_string exn)
+
+let run_suite suite =
+  Printf.printf "Suite: %s\n" suite.suite_name;
+  let results =
+    List.rev suite.suite_tests
+    |> List.map (fun t ->
+      (t.name, run_one t)) in
+  let passed = List.length
+    (List.filter
+      (fun (_, r) -> r = Pass) results) in
+  let total = List.length results in
+  List.iter (fun (name, result) ->
+    match result with
+    | Pass ->
+        Printf.printf "  PASS  %s\n" name
+    | Fail msg ->
+        Printf.printf "  FAIL  %s: %s\n"
+          name msg
+  ) results;
+  Printf.printf "  %d/%d passed\n\n"
+    passed total;
+  passed = total
+
+let run_all_suites () =
+  let all_ok = List.for_all run_suite
+    (List.rev !suites) in
+  if not all_ok then exit 1
+  ]}
+}
+{li
+  {b Expect Tests}
+
+  The crown jewel: expect tests capture actual output and
+  compare it to an expected snapshot. On first run, they
+  record the output. On later runs, they detect regressions.
+  This is how tools like ppx_expect and Cram tests work.
+
+  {[
+exception Test_failure of string
+
+let assert_equal ~expected ~actual msg =
+  if expected <> actual then
+    raise (Test_failure
+      (Printf.sprintf "%s: expected %s, got %s"
+        msg
+        (string_of_int expected)
+        (string_of_int actual)))
+
+let assert_string_equal ~expected ~actual msg =
+  if expected <> actual then
+    raise (Test_failure
+      (Printf.sprintf "%s: expected %S, got %S"
+        msg expected actual))
+
+let assert_true condition msg =
+  if not condition then
+    raise (Test_failure msg)
+
+let assert_raises fn msg =
+  try fn ();
+    raise (Test_failure
+      (msg ^ ": expected exception"))
+  with Test_failure _ as e -> raise e | _ -> ()
+
+type test = { name : string; fn : unit -> unit }
+type result = Pass | Fail of string
+
+type suite = {
+  suite_name : string;
+  mutable suite_tests : test list;
+}
+
+let suites : suite list ref = ref []
+
+let create_suite name =
+  let s = { suite_name = name;
+            suite_tests = [] } in
+  suites := s :: !suites; s
+
+let add_test suite name fn =
+  suite.suite_tests <-
+    { name; fn } :: suite.suite_tests
+
+let run_one test =
+  try test.fn (); Pass
+  with
+  | Test_failure msg -> Fail msg
+  | exn -> Fail (Printexc.to_string exn)
+
+(* Expect test infrastructure *)
+let expect_dir = "_expect"
+
+let expect_test suite name fn =
+  add_test suite name (fun () ->
+    let buf = Buffer.create 256 in
+    fn (Buffer.add_string buf);
+    let actual = Buffer.contents buf in
+    let path = Printf.sprintf "%s/%s/%s.expected"
+      expect_dir suite.suite_name name in
+    if Sys.file_exists path then begin
+      let ic = open_in path in
+      let expected = really_input_string ic
+        (in_channel_length ic) in
+      close_in ic;
+      assert_string_equal
+        ~expected ~actual
+        (name ^ " snapshot")
+    end else begin
+      let dir = Filename.dirname path in
+      ignore (Sys.command
+        ("mkdir -p " ^ dir));
+      let oc = open_out path in
+      output_string oc actual;
+      close_out oc;
+      Printf.printf
+        "  NEW   %s (snapshot saved)\n" name
+    end)
+
+let run_suite suite =
+  Printf.printf "Suite: %s\n" suite.suite_name;
+  let results =
+    List.rev suite.suite_tests
+    |> List.map (fun t ->
+      (t.name, run_one t)) in
+  let passed = List.length
+    (List.filter
+      (fun (_, r) -> r = Pass) results) in
+  let total = List.length results in
+  List.iter (fun (name, result) ->
+    match result with
+    | Pass ->
+        Printf.printf "  PASS  %s\n" name
+    | Fail msg ->
+        Printf.printf "  FAIL  %s: %s\n"
+          name msg
+  ) results;
+  Printf.printf "  %d/%d passed\n\n"
+    passed total;
+  passed = total
+
+let run_all_suites () =
+  let all_ok = List.for_all run_suite
+    (List.rev !suites) in
+  if not all_ok then exit 1
+  ]}
+}
+}

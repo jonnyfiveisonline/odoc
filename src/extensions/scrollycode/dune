@@ -1,0 +1,3 @@
+(library
+ (name scrollycode_extension)
+ (libraries odoc.extension_api odoc_model odoc_document))

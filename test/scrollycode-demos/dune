@@ -1,0 +1,8 @@
+(executable
+ (name odoc_scrolly)
+ (libraries
+  cmdliner
+  odoc_model
+  odoc_odoc
+  odoc_extension_api
+  scrollycode_extension))

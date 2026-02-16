@@ -1,0 +1,198 @@
+{0 Scrollycode Demos}
+
+{%html:
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Source+Code+Pro:ital,wght@0,300..900;1,300..900&family=Source+Serif+4:ital,opsz,wght@0,8..60,300..900;1,8..60,300..900&display=swap" rel="stylesheet">
+<style>
+.odoc-nav, .odoc-tocs, .odoc-search { display: none !important; }
+.odoc-preamble > h1 { display: none !important; }
+.odoc-preamble, .odoc-content { max-width: none !important; padding: 0 !important; margin: 0 !important; }
+body.odoc, .odoc { padding: 0 !important; margin: 0 !important; max-width: none !important; }
+
+.demos-index {
+  font-family: 'Source Serif 4', Georgia, serif;
+  background: #f4f0e8;
+  min-height: 100vh;
+}
+
+.demos-header {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 6rem 2rem 3rem;
+  text-align: center;
+}
+
+.demos-header h1 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin-bottom: 1rem;
+  color: #2c2416;
+}
+
+.demos-header h1 em {
+  font-style: italic;
+  color: #c25832;
+}
+
+.demos-header p {
+  color: #6b5d4d;
+  max-width: 50ch;
+  margin: 0 auto;
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+.demos-list {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1rem 2rem 6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.demo-card {
+  display: block;
+  background: #fff;
+  border: 1px solid rgba(44,36,22,0.08);
+  border-radius: 10px;
+  padding: 1.5rem 1.75rem;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}
+
+.demo-card:hover {
+  border-color: #c25832;
+  box-shadow: 0 4px 20px rgba(194,88,50,0.1);
+  transform: translateY(-2px);
+}
+
+.demo-card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.demo-card-number {
+  font-family: 'Source Code Pro', monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #c25832;
+  flex-shrink: 0;
+}
+
+.demo-card h2 {
+  font-family: 'Fraunces', serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.demo-card p {
+  color: #6b5d4d;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  margin: 0.5rem 0;
+}
+
+.demo-card .tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.tag {
+  font-family: 'Source Code Pro', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  padding: 0.2em 0.6em;
+  border-radius: 4px;
+  background: rgba(194,88,50,0.07);
+  color: #c25832;
+}
+
+.tag.dark {
+  background: #1a1a2e;
+  color: rgba(255,255,255,0.5);
+}
+
+.demos-footer {
+  text-align: center;
+  padding: 0 2rem 4rem;
+  font-family: 'Source Code Pro', monospace;
+  font-size: 0.72rem;
+  color: #6b5d4d;
+  letter-spacing: 0.04em;
+}
+
+.demos-footer a {
+  color: #c25832;
+  text-decoration: none;
+}
+</style>
+
+<div class="demos-index">
+
+<div class="demos-header">
+  <h1>Scrollycoding in <em>OCaml</em></h1>
+  <p>Three odoc extension plugins, each rendering the same scrollycode pattern with a radically different visual theme. Authored as <code>.mld</code> files using <code>@scrolly.&lt;theme&gt;</code> custom tags.</p>
+</div>
+
+<div class="demos-list">
+
+  <a class="demo-card" href="warm_parser.html">
+    <div class="demo-card-header">
+      <span class="demo-card-number">01</span>
+      <h2>The Warm Workshop</h2>
+    </div>
+    <p>Building a JSON parser step by step. Warm cream background with a dark navy code panel, Fraunces serif display type, and earthy burnt-sienna accents. Classic scrollycode split layout.</p>
+    <div class="tags">
+      <span class="tag">@scrolly.warm</span>
+      <span class="tag">Fraunces + Source Serif</span>
+      <span class="tag">parser tutorial</span>
+    </div>
+  </a>
+
+  <a class="demo-card" href="dark_repl.html">
+    <div class="demo-card-header">
+      <span class="demo-card-number">02</span>
+      <h2>The Dark Terminal</h2>
+    </div>
+    <p>Building a REPL from scratch. Near-black cinematic theme with phosphor-green accents, JetBrains Mono code font, and the code panel as the visual hero. Prose in a narrow left column.</p>
+    <div class="tags">
+      <span class="tag dark">@scrolly.dark</span>
+      <span class="tag">JetBrains Mono + Outfit</span>
+      <span class="tag">REPL tutorial</span>
+    </div>
+  </a>
+
+  <a class="demo-card" href="notebook_testing.html">
+    <div class="demo-card-header">
+      <span class="demo-card-number">03</span>
+      <h2>The Notebook</h2>
+    </div>
+    <p>Building a test framework incrementally. Clean editorial aesthetic with a soft white background, blue-violet accents, Newsreader serif headings, and generous whitespace.</p>
+    <div class="tags">
+      <span class="tag">@scrolly.notebook</span>
+      <span class="tag">Newsreader + DM Sans</span>
+      <span class="tag">testing tutorial</span>
+    </div>
+  </a>
+
+</div>
+
+<div class="demos-footer">
+  Powered by <a href="https://ocaml.github.io/odoc/">odoc</a> custom tag extensions &middot; Inspired by <a href="https://codehike.org">Code Hike</a>
+</div>
+
+</div>
+%}
