@@ -693,6 +693,7 @@ and value_ map parent id v =
     doc = docs (parent :> Identifier.LabelParent.t) v.doc;
     type_ = type_expr map (parent :> Identifier.LabelParent.t) v.type_;
     value = v.value;
+    modalities = v.modalities;
   }
 
 and typ_ext map parent t =
@@ -1026,8 +1027,8 @@ and type_expr map (parent : Identifier.LabelParent.t) (t : Component.TypeExpr.t)
     | Var (s, jk) -> Var (s, jk)
     | Any -> Any
     | Alias (t, str) -> Alias (type_expr map parent t, str)
-    | Arrow (lbl, t1, t2, modes) ->
-        Arrow (lbl, type_expr map parent t1, type_expr map parent t2, modes)
+    | Arrow (lbl, t1, t2, modes, ret_modes) ->
+        Arrow (lbl, type_expr map parent t1, type_expr map parent t2, modes, ret_modes)
     | Tuple ts ->
         Tuple (List.map (fun (lbl, ty) -> (lbl, type_expr map parent ty)) ts)
     | Unboxed_tuple ts ->

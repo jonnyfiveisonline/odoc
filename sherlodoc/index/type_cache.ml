@@ -16,7 +16,7 @@ let rec of_odoc ~cache otyp =
   match otyp with
   | Odoc_model.Lang.TypeExpr.Var (_str, _) -> Any
   | Any -> Any
-  | Arrow (_lbl, left, right, _modes) -> cache (Arrow (of_odoc ~cache left, of_odoc ~cache right))
+  | Arrow (_lbl, left, right, _modes, _ret_modes) -> cache (Arrow (of_odoc ~cache left, of_odoc ~cache right))
   | Constr (name, args) ->
       cache (Constr (Typename.to_string name, List.map (of_odoc ~cache) args))
   | Tuple li -> cache (Tuple (List.map (fun (_, ty) -> of_odoc ~cache ty) li))

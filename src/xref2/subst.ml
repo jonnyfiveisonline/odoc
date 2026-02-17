@@ -121,8 +121,8 @@ let rec substitute_vars vars t =
   | Var (s, _jk) -> ( try List.assoc s vars with Not_found -> t)
   | Any -> Any
   | Alias (t, str) -> Alias (substitute_vars vars t, str)
-  | Arrow (lbl, t1, t2, modes) ->
-      Arrow (lbl, substitute_vars vars t1, substitute_vars vars t2, modes)
+  | Arrow (lbl, t1, t2, modes, ret_modes) ->
+      Arrow (lbl, substitute_vars vars t1, substitute_vars vars t2, modes, ret_modes)
   | Tuple ts ->
       Tuple (List.map (fun (lbl, ty) -> (lbl, substitute_vars vars ty)) ts)
   | Unboxed_tuple ts ->
@@ -552,7 +552,7 @@ and type_expr s t =
   | Var _ as v -> v
   | Any -> Any
   | Alias (t, str) -> Alias (type_expr s t, str)
-  | Arrow (lbl, t1, t2, modes) -> Arrow (lbl, type_expr s t1, type_expr s t2, modes)
+  | Arrow (lbl, t1, t2, modes, ret_modes) -> Arrow (lbl, type_expr s t1, type_expr s t2, modes, ret_modes)
   | Tuple ts -> Tuple (List.map (fun (lbl, ty) -> (lbl, type_expr s ty)) ts)
   | Unboxed_tuple ts -> Unboxed_tuple (List.map (fun (l, t) -> l, type_expr s t) ts)
   | Constr (p, ts) -> (
@@ -561,7 +561,7 @@ and type_expr s t =
           let mk_var acc pexpr param =
             match param.Odoc_model.Lang.TypeDecl.desc with
             | Any -> acc
-            | Var n -> (n, type_expr s pexpr) :: acc
+            | Var (n, _) -> (n, type_expr s pexpr) :: acc
           in
           let vars = List.fold_left2 mk_var [] ts eq.params in
           substitute_vars vars t

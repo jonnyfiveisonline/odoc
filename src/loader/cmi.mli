@@ -90,6 +90,7 @@ val read_signature : env ->
 
 #if defined OXCAML
 val extract_arg_modes : Mode.Alloc.lr -> string list
+val extract_modalities : Mode.Modality.t -> string list
 #endif
 
 val read_extension_constructor : env ->

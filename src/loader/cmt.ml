@@ -54,7 +54,7 @@ let rec read_pattern env parent doc pat =
           let type_ = Cmi.read_type_expr env pat.pat_type in
           let value = Abstract in
           let source_loc_jane = Some (Odoc_model.Lang.Source_loc_jane.of_location !cmt_builddir pat.pat_loc) in
-          [Value {id; source_loc; doc; type_; value ; source_loc_jane }]
+          [Value {id; source_loc; doc; type_; value ; source_loc_jane; modalities = [] }]
 #if OCAML_VERSION < (5,2, 0)
     | Tpat_alias(pat, id, _) ->
 #elif defined OXCAML
@@ -70,7 +70,7 @@ let rec read_pattern env parent doc pat =
           let type_ = Cmi.read_type_expr env pat.pat_type in
           let value = Abstract in
           let source_loc_jane = Some (Odoc_model.Lang.Source_loc_jane.of_location !cmt_builddir pat.pat_loc) in
-          Value {id; source_loc; doc; type_; value ; source_loc_jane } :: read_pattern env parent doc pat
+          Value {id; source_loc; doc; type_; value ; source_loc_jane; modalities = [] } :: read_pattern env parent doc pat
     | Tpat_constant _ -> []
     | Tpat_tuple pats ->
 #if OCAML_VERSION >= (5, 4, 0) || defined OXCAML
@@ -286,7 +286,7 @@ let rec read_class_field env parent cf =
                must keep only the type after the first arrow. *)
             let type_ =
               match Cmi.read_type_expr env expr.exp_type with
-              | Arrow (_, _, t, _) -> t
+              | Arrow (_, _, t, _, _) -> t
               | t -> t
             in
             false, type_

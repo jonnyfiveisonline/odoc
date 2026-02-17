@@ -451,8 +451,16 @@ module Make (Syntax : SYNTAX) = struct
           enclose_parens_if_needed
             (type_expr ~needs_parentheses:true te
             ++ O.txt " " ++ O.keyword "as" ++ O.txt " '" ++ O.txt alias)
-      | Arrow (None, src, dst, modes) ->
+      | Arrow (None, src, dst, modes, ret_modes) ->
           let mode_suffix = match modes with
+            | [] -> O.noop
+            | ms ->
+                O.txt " " ++ O.keyword "@" ++ O.txt " "
+                ++ O.txt (String.concat ~sep:" " ms)
+          in
+          let dst_needs_parens = ret_modes <> [] && (match dst with Arrow _ -> true | _ -> false) in
+          let dst_rendered = type_expr ~needs_parentheses:dst_needs_parens dst in
+          let ret_suffix = match ret_modes with
             | [] -> O.noop
             | ms ->
                 O.txt " " ++ O.keyword "@" ++ O.txt " "
@@ -462,10 +470,10 @@ module Make (Syntax : SYNTAX) = struct
             O.span
               ((O.box_hv @@ type_expr ~needs_parentheses:true src ++ mode_suffix)
               ++ O.txt " " ++ Syntax.Type.arrow)
-            ++ O.sp ++ type_expr dst
+            ++ O.sp ++ dst_rendered ++ ret_suffix
           in
           if not needs_parentheses then res else enclose ~l:"(" res ~r:")"
-      | Arrow (Some (RawOptional _ as lbl), _src, dst, _modes) ->
+      | Arrow (Some (RawOptional _ as lbl), _src, dst, _modes, _ret_modes) ->
           let res =
             O.span
               (O.box_hv
@@ -475,8 +483,16 @@ module Make (Syntax : SYNTAX) = struct
             ++ O.sp ++ type_expr dst
           in
           if not needs_parentheses then res else enclose ~l:"(" res ~r:")"
-      | Arrow (Some lbl, src, dst, modes) ->
+      | Arrow (Some lbl, src, dst, modes, ret_modes) ->
           let mode_suffix = match modes with
+            | [] -> O.noop
+            | ms ->
+                O.txt " " ++ O.keyword "@" ++ O.txt " "
+                ++ O.txt (String.concat ~sep:" " ms)
+          in
+          let dst_needs_parens = ret_modes <> [] && (match dst with Arrow _ -> true | _ -> false) in
+          let dst_rendered = type_expr ~needs_parentheses:dst_needs_parens dst in
+          let ret_suffix = match ret_modes with
             | [] -> O.noop
             | ms ->
                 O.txt " " ++ O.keyword "@" ++ O.txt " "
@@ -489,7 +505,7 @@ module Make (Syntax : SYNTAX) = struct
                   ++ (O.box_hv @@ type_expr ~needs_parentheses:true src)
                   ++ mode_suffix)
               ++ O.txt " " ++ Syntax.Type.arrow)
-            ++ O.sp ++ type_expr dst
+            ++ O.sp ++ dst_rendered ++ ret_suffix
           in
           if not needs_parentheses then res else enclose ~l:"(" res ~r:")"
       | Tuple lst -> tuple ~needs_parentheses ~boxed:true lst
@@ -852,7 +868,8 @@ module Make (Syntax : SYNTAX) = struct
         let desc =
           match desc with
           | Odoc_model.Lang.TypeDecl.Any -> [ "_" ]
-          | Var s -> [ "'"; s ]
+          | Var (s, None) -> [ "'"; s ]
+          | Var (s, Some jkind) -> [ "("; "'"; s; " : "; jkind; ")" ]
         in
         let var_desc =
           match variance with
@@ -1004,6 +1021,10 @@ module Make (Syntax : SYNTAX) = struct
              ++ O.txt " " ++ O.txt name
              ++ O.txt Syntax.Type.annotation_separator
              ++ O.cut ++ type_expr t.type_
+             ++ (match t.modalities with
+                 | [] -> O.noop
+                 | ms -> O.txt " " ++ O.keyword "@@" ++ O.txt " "
+                         ++ O.txt (String.concat ~sep:" " ms))
              ++ if semicolon then O.txt ";" else O.noop)
       in
       let attr = [ "value" ] @ extra_attr in

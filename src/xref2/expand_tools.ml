@@ -56,7 +56,7 @@ let rec type_expr map t =
   | Any -> Any
   | Alias (t, s) ->
       if List.mem_assoc s map then raise Clash else Alias (type_expr map t, s)
-  | Arrow (l, t1, t2, modes) -> Arrow (l, type_expr map t1, type_expr map t2, modes)
+  | Arrow (l, t1, t2, modes, ret_modes) -> Arrow (l, type_expr map t1, type_expr map t2, modes, ret_modes)
   | Tuple ts -> Tuple (List.map (fun (l, ty) -> (l, type_expr map ty)) ts)
   | Unboxed_tuple ts -> Unboxed_tuple (List.map (fun (l, t) -> l, type_expr map t) ts)
   | Constr (p, ts) -> Constr (p, List.map (type_expr map) ts)
@@ -100,7 +100,7 @@ let collapse_eqns eqn1 eqn2 params =
   let open Lang.TypeDecl in
   let map =
     List.map2
-      (fun v p -> match v.desc with Var x -> Some (x, p) | Any -> None)
+      (fun v p -> match v.desc with Var (x, _) -> Some (x, p) | Any -> None)
       eqn2.Equation.params params
   in
   let map =

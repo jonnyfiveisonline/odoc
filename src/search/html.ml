@@ -57,7 +57,7 @@ let field_rhs ({ mutable_ = _; type_; parent_type = _ } : Entry.field_entry) =
 let typedecl_params ?(delim = `parens) params =
   let format_param { TypeDecl.desc; variance; injectivity } =
     let desc =
-      match desc with TypeDecl.Any -> [ "_" ] | Var s -> [ "'"; s ]
+      match desc with TypeDecl.Any -> [ "_" ] | Var (s, _) -> [ "'"; s ]
     in
     let var_desc =
       match variance with

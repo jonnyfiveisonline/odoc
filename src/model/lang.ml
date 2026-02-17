@@ -263,7 +263,8 @@ and TypeDecl : sig
 
   type variance = Pos | Neg | Bivariant
 
-  type param_desc = Any | Var of string
+  type param_desc = Any | Var of string * string option
+      (** name, jkind (e.g. [Some "float64"]) *)
 
   type param = {
     desc : param_desc;
@@ -341,6 +342,7 @@ and Value : sig
     value : value;
     doc : Comment.docs;
     type_ : TypeExpr.t;
+    modalities : string list;
   }
 end =
   Value
@@ -473,8 +475,8 @@ and TypeExpr : sig
     | Var of string * string option  (** name, jkind (e.g. [Some "float64"]) *)
     | Any
     | Alias of t * string
-    | Arrow of label option * t * t * string list
-        (** label, arg, ret, arg_modes (e.g. [["local"; "unique"]]) *)
+    | Arrow of label option * t * t * string list * string list
+        (** label, arg, ret, arg_modes, ret_modes *)
     | Tuple of (string option * t) list
     | Unboxed_tuple of (string option * t) list
     | Constr of Path.Type.t * t list

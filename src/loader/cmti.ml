@@ -75,14 +75,14 @@ let rec read_core_type env container ctyp =
         in
         let res = read_core_type env container res in
 #if defined OXCAML
-        let arg_modes = match Types.get_desc ctyp.ctyp_type with
-          | Tarrow((_lbl, marg, _mret), _arg, _res, _) ->
-              Cmi.extract_arg_modes marg
-          | _ -> []
+        let arg_modes, ret_modes = match Types.get_desc ctyp.ctyp_type with
+          | Tarrow((_lbl, marg, mret), _arg, _res, _) ->
+              (Cmi.extract_arg_modes marg, Cmi.extract_arg_modes mret)
+          | _ -> ([], [])
         in
-        Arrow(lbl, arg, res, arg_modes)
+        Arrow(lbl, arg, res, arg_modes, ret_modes)
 #else
-          Arrow(lbl, arg, res, [])
+          Arrow(lbl, arg, res, [], [])
 #endif
     | Ttyp_tuple typs ->
 #if OCAML_VERSION >= (5,4,0) || defined OXCAML
@@ -229,19 +229,29 @@ let read_value_description env parent vd =
     | primitives -> External primitives
   in
   let source_loc_jane = Some (Odoc_model.Lang.Source_loc_jane.of_location !cmti_builddir vd.val_loc) in
-  Value { Value.id; source_loc; doc; type_; value ; source_loc_jane }
+#if defined OXCAML
+  let modalities = Cmi.extract_modalities vd.val_val.val_modalities in
+#else
+  let modalities = [] in
+#endif
+  Value { Value.id; source_loc; doc; type_; value ; source_loc_jane; modalities }
 
 let read_type_parameter (ctyp, var_and_injectivity)  =
   let open TypeDecl in
   let desc =
     match ctyp.ctyp_desc with
 #if defined OXCAML
-    (* TODO: presumably we want the layouts below, eventually *)
     | Ttyp_var (None, _layout) -> Any
-    | Ttyp_var (Some s, _layout) -> Var s
+    | Ttyp_var (Some s, layout) ->
+        let jkind = match layout with
+          | Some { Parsetree.pjkind_desc = Pjk_abbreviation name; _ } ->
+              if name = "value" then None else Some name
+          | _ -> None
+        in
+        Var (s, jkind)
 #else
     | Ttyp_any -> Any
-    | Ttyp_var s -> Var s
+    | Ttyp_var s -> Var (s, None)
 #endif
     | _ -> assert false
   in

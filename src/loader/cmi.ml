@@ -543,6 +543,57 @@ let extract_jkind_of_tvar jkind =
   | Sort (Var _) -> None  (* sort variable — not determined *)
   | Product _ -> None  (* product layout — complex, skip for now *)
   | Any -> None
+
+(** Extract non-default modality strings from a value's modalities.
+    Replicates the implied-modality filtering from [Typemode.least_modalities]. *)
+let extract_modalities modalities =
+  let m = Mode.Modality.zap_to_floor modalities in
+  if Mode.Modality.Const.is_id m then []
+  else begin
+    let atoms = Mode.Modality.Const.diff Mode.Modality.Const.id m in
+    (* Compute implied atoms from each annotated atom *)
+    let implied_of_atom (Mode.Modality.Atom (ax, v)) =
+      match ax, v with
+      | Comonadic Areality, Meet_with Global ->
+        [ Mode.Modality.Atom (Comonadic Forkable, Meet_with Mode.Forkable.Const.Forkable)
+        ; Mode.Modality.Atom (Comonadic Yielding, Meet_with Mode.Yielding.Const.Unyielding)
+        ; Mode.Modality.Atom (Monadic Uniqueness, Join_with Mode.Uniqueness.Const.Aliased)
+        ]
+      | Comonadic Areality, Meet_with Local ->
+        [ Mode.Modality.Atom (Comonadic Forkable, Meet_with Mode.Forkable.Const.Unforkable)
+        ; Mode.Modality.Atom (Comonadic Yielding, Meet_with Mode.Yielding.Const.Yielding)
+        ]
+      | Monadic Visibility, Join_with Immutable ->
+        [ Mode.Modality.Atom (Monadic Contention, Join_with Mode.Contention.Const.Contended) ]
+      | Monadic Visibility, Join_with Read ->
+        [ Mode.Modality.Atom (Monadic Contention, Join_with Mode.Contention.Const.Shared) ]
+      | Monadic Visibility, Join_with Read_write ->
+        [ Mode.Modality.Atom (Monadic Contention, Join_with Mode.Contention.Const.Uncontended) ]
+      | Comonadic Statefulness, Meet_with Stateless ->
+        [ Mode.Modality.Atom (Comonadic Portability, Meet_with Mode.Portability.Const.Portable) ]
+      | Comonadic Statefulness, Meet_with Observing ->
+        [ Mode.Modality.Atom (Comonadic Portability, Meet_with Mode.Portability.Const.Shareable) ]
+      | Comonadic Statefulness, Meet_with Stateful ->
+        [ Mode.Modality.Atom (Comonadic Portability, Meet_with Mode.Portability.Const.Nonportable) ]
+      | _ -> []
+    in
+    let implied = List.concat_map implied_of_atom atoms in
+    (* Filter out atoms that are exactly implied by other atoms *)
+    let filtered = List.filter (fun a -> not (List.mem a implied)) atoms in
+    (* Add back atoms on implied axes with overridden (non-implied) values *)
+    let overridden = List.filter_map (fun imp_atom ->
+      let (Mode.Modality.Atom (ax, _v_implied)) = imp_atom in
+      let v_actual = Mode.Modality.Const.proj ax m in
+      let actual_atom = Mode.Modality.Atom (ax, v_actual) in
+      if actual_atom <> imp_atom then Some actual_atom
+      else None
+    ) implied in
+    let final_atoms = filtered @ overridden in
+    List.filter_map (fun (Mode.Modality.Atom (ax, v)) ->
+      let s = Format.asprintf "%a" (Printtyp.modality ax) v in
+      if s = "" then None else Some s
+    ) final_atoms
+  end
 #endif
 
 let rec read_type_expr env typ =
@@ -564,8 +615,9 @@ let rec read_type_expr env typ =
           let nm = match name with Some n -> n | None -> name_of_type typ in
           if nm = "_" then Any
           else Var (nm, extract_jkind_of_tvar jkind)
-      | Tarrow((lbl, marg, _mret), arg, res, _) ->
+      | Tarrow((lbl, marg, mret), arg, res, _) ->
           let arg_modes = extract_arg_modes marg in
+          let ret_modes = extract_arg_modes mret in
 #else
       | Tvar _ ->
           let name = name_of_type typ in
@@ -573,6 +625,7 @@ let rec read_type_expr env typ =
             else Var (name, None)
       | Tarrow(lbl, arg, res, _) ->
           let arg_modes = [] in
+          let ret_modes = [] in
 #endif
           let lbl = read_label lbl in
           let lbl,arg =
@@ -594,7 +647,7 @@ let rec read_type_expr env typ =
               lbl, read_type_expr env arg
           in
           let res = read_type_expr env res in
-            Arrow(lbl, arg, res, arg_modes)
+            Arrow(lbl, arg, res, arg_modes, ret_modes)
       | Ttuple typs ->
 #if OCAML_VERSION >= (5,4,0) || defined OXCAML
           let typs = List.map (fun (lbl,x) -> lbl, read_type_expr env x) typs in
@@ -797,7 +850,12 @@ let read_value_description ({ident_env ; warnings_tag} as env) parent id vd =
   in
   (* Source location is not trustworthy since it's a cmi so left as None *)
   let source_loc_jane = None in
-  Value { Value.id; source_loc; doc; type_; value ; source_loc_jane }
+#if defined OXCAML
+  let modalities = extract_modalities vd.val_modalities in
+#else
+  let modalities = [] in
+#endif
+  Value { Value.id; source_loc; doc; type_; value ; source_loc_jane; modalities }
 
 #if defined OXCAML
 let is_mutable = Types.is_mutable
@@ -899,7 +957,16 @@ let read_type_parameter abstr var param =
   let name = name_of_type param in
   let desc =
     if name = "_" then Any
-    else Var name
+    else
+#if defined OXCAML
+      let jkind_opt = match Compat.get_desc param with
+        | Tvar { jkind; _ } -> extract_jkind_of_tvar jkind
+        | _ -> None
+      in
+      Var (name, jkind_opt)
+#else
+      Var (name, None)
+#endif
   in
   let variance =
     if not (abstr || aliasable param) then None
