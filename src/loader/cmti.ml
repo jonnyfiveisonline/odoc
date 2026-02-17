@@ -47,8 +47,7 @@ let rec read_core_type env container ctyp =
     | Ttyp_var (None, _jkind_annot) -> Any
     | Ttyp_var (Some s, jkind_annot) ->
         let jkind = match jkind_annot with
-          | Some { Parsetree.pjka_desc = Pjk_abbreviation lid; _ } ->
-              let name = Longident.last lid.txt in
+          | Some { Parsetree.pjkind_desc = Pjk_abbreviation name; _ } ->
               if name = "value" then None else Some name
           | _ -> None
         in
@@ -75,7 +74,16 @@ let rec read_core_type env container ctyp =
 #endif
         in
         let res = read_core_type env container res in
+#if defined OXCAML
+        let arg_modes = match Types.get_desc ctyp.ctyp_type with
+          | Tarrow((_lbl, marg, _mret), _arg, _res, _) ->
+              Cmi.extract_arg_modes marg
+          | _ -> []
+        in
+        Arrow(lbl, arg, res, arg_modes)
+#else
           Arrow(lbl, arg, res, [])
+#endif
     | Ttyp_tuple typs ->
 #if OCAML_VERSION >= (5,4,0) || defined OXCAML
         let typs = List.map (fun (lbl,x) -> lbl, read_core_type env container x) typs in

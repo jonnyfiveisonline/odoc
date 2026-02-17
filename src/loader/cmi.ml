@@ -537,14 +537,12 @@ let extract_arg_modes marg =
     Returns [None] for the default [value] layout or unknown layouts. *)
 let extract_jkind_of_tvar jkind =
   let desc = Jkind.get jkind in
-  match desc.base with
-  | Layout (Sort (Base Value)) -> None  (* default — don't annotate *)
-  | Layout (Sort (Base b)) -> Some (Jkind_types.Sort.to_string_base b)
-  | Layout (Sort (Var _)) -> None  (* sort variable — not determined *)
-  | Layout (Sort (Univar _)) -> None  (* universally quantified sort *)
-  | Layout (Product _) -> None  (* product layout — complex, skip for now *)
-  | Layout Any -> None
-  | Kconstr _ -> None  (* abstract kind — skip *)
+  match desc.layout with
+  | Sort (Base Value) -> None  (* default — don't annotate *)
+  | Sort (Base b) -> Some (Jkind_types.Sort.to_string_base b)
+  | Sort (Var _) -> None  (* sort variable — not determined *)
+  | Product _ -> None  (* product layout — complex, skip for now *)
+  | Any -> None
 #endif
 
 let rec read_type_expr env typ =

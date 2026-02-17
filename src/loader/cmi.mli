@@ -88,6 +88,10 @@ val read_signature : env ->
                      Odoc_model.Compat.signature -> Odoc_model.Lang.Signature.t
 
 
+#if defined OXCAML
+val extract_arg_modes : Mode.Alloc.lr -> string list
+#endif
+
 val read_extension_constructor : env ->
                        Paths.Identifier.Signature.t ->
                        Ident.t -> Types.extension_constructor ->
