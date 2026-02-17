@@ -56,6 +56,7 @@ type kind =
   | ModuleType of module_entry
   | Constructor of constructor_entry
   | Field of field_entry
+  | UnboxedField of field_entry
   | Page of Odoc_model.Frontmatter.t
   | Impl
   | Dir
@@ -64,8 +65,9 @@ type t = {
   id : Odoc_model.Paths.Identifier.Any.t;
   doc : Odoc_model.Comment.elements;
   kind : kind;
+  source_loc : Odoc_model.Lang.Source_loc_jane.t option;
 }
 
-let entry ~id ~doc ~kind =
+let entry ~id ~doc ~kind ~source_loc =
   let id = (id :> Odoc_model.Paths.Identifier.Any.t) in
-  { id; kind; doc }
+  { id; kind; doc; source_loc }

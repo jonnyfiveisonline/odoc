@@ -298,8 +298,8 @@ module Make (Syntax : SYNTAX) = struct
 
     let source id syntax_info infos source_code =
       let url = path id in
-      let mapper (info, loc) =
-        match info_of_info info with Some x -> Some (x, loc) | None -> None
+      let mapper (info, (loc : Lang.Source_info.location_in_file)) =
+        match info_of_info info with Some x -> Some (x, (loc.loc_start.pos_cnum, loc.loc_end.pos_cnum)) | None -> None
       in
       let infos = Odoc_utils.List.filter_map mapper infos in
       let syntax_info =
@@ -419,6 +419,22 @@ module Make (Syntax : SYNTAX) = struct
           in
           Syntax.Type.handle_constructor_params path (O.box_hv params)
 
+    and tuple ?(needs_parentheses = false) ~boxed lst =
+      let opt_label = function
+          None -> O.noop
+        | Some lbl -> O.txt lbl ++ O.txt ":" ++ O.cut
+      in
+      let res =
+        O.box_hv_no_indent
+          (O.list lst ~sep:Syntax.Type.Tuple.element_separator
+             ~f:(fun (lbl, typ) ->
+               opt_label lbl ++ type_expr ~needs_parentheses:true typ))
+      in
+      let lparen = if boxed then "(" else "#(" in
+      if Syntax.Type.Tuple.always_parenthesize || needs_parentheses || not boxed then
+        enclose ~l:lparen res ~r:")"
+      else res
+
     and type_expr ?(needs_parentheses = false) (t : Odoc_model.Lang.TypeExpr.t)
         =
       let enclose_parens_if_needed res =
@@ -460,21 +476,8 @@ module Make (Syntax : SYNTAX) = struct
             ++ O.sp ++ type_expr dst
           in
           if not needs_parentheses then res else enclose ~l:"(" res ~r:")"
-      | Tuple lst ->
-          let res =
-            O.box_hv_no_indent
-              (O.list lst ~sep:Syntax.Type.Tuple.element_separator
-                 ~f:(fun (lbl, ty) ->
-                   match lbl with
-                   | None -> type_expr ~needs_parentheses:true ty
-                   | Some lbl ->
-                       tag "label" (O.txt lbl)
-                       ++ O.txt ":" ++ O.cut
-                       ++ type_expr ~needs_parentheses:true ty))
-          in
-          if Syntax.Type.Tuple.always_parenthesize || needs_parentheses then
-            enclose ~l:"(" res ~r:")"
-          else res
+      | Tuple lst -> tuple ~needs_parentheses ~boxed:true lst
+      | Unboxed_tuple lst -> tuple ~needs_parentheses ~boxed:false lst
       | Constr (path, args) ->
           let link = Link.from_path (path :> Paths.Path.t) in
           format_type_path ~delim:`parens args link
@@ -485,6 +488,10 @@ module Make (Syntax : SYNTAX) = struct
             (Link.from_path (path :> Paths.Path.t))
       | Poly (polyvars, t) ->
           O.txt ("'" ^ String.concat ~sep:" '" polyvars ^ ". ") ++ type_expr t
+      | Quote t ->
+          O.span (O.txt "<[ " ++ O.box_hv (type_expr t) ++ O.txt " ]>")
+      | Splice t ->
+          O.span (O.txt "$" ++ type_expr ~needs_parentheses:true t)
       | Package pkg ->
           enclose ~l:"(" ~r:")"
             (O.keyword "module" ++ O.txt " "
@@ -523,6 +530,8 @@ module Make (Syntax : SYNTAX) = struct
     val extension : Lang.Extension.t -> Item.t
 
     val record : Lang.TypeDecl.Field.t list -> DocumentedSrc.one list
+
+    val unboxed_record : Lang.TypeDecl.UnboxedField.t list -> DocumentedSrc.one list
 
     val exn : Lang.Exception.t -> Item.t
 
@@ -572,6 +581,46 @@ module Make (Syntax : SYNTAX) = struct
       in
       let content =
         O.documentedSrc (O.txt "{") @ rows @ O.documentedSrc (O.txt "}")
+      in
+      content
+
+    let unboxed_record fields =
+      let field mutable_ id typ =
+        let url = Url.from_identifier ~stop_before:true id in
+        let name = Paths.Identifier.name id in
+        let attrs =
+          [ "def"; "record"; Url.Anchor.string_of_kind url.kind ]
+        in
+        let cell =
+          (* O.td ~a:[ O.a_class ["def"; kind ] ]
+           *   [O.a ~a:[O.a_href ("#" ^ anchor); O.a_class ["anchor"]] []
+           *   ; *)
+          O.code
+            ((if mutable_ then O.keyword "mutable" ++ O.txt " " else O.noop)
+            ++ O.txt name
+            ++ O.txt Syntax.Type.annotation_separator
+            ++ type_expr typ
+            ++ O.txt Syntax.Type.Record.field_separator)
+          (* ] *)
+        in
+        (url, attrs, cell)
+      in
+      let rows =
+        fields
+        |> List.map (fun fld ->
+               let open Odoc_model.Lang.TypeDecl.UnboxedField in
+               let url, attrs, code =
+                 field fld.mutable_ (fld.id :> Paths.Identifier.t) fld.type_
+               in
+               let anchor = Some url in
+               let doc = fld.doc.elements in
+               let rhs = Comment.to_ir doc in
+               let doc = if not (Comment.has_doc doc) then [] else rhs in
+               let markers = Syntax.Comment.markers in
+               DocumentedSrc.Documented { anchor; attrs; code; doc; markers })
+      in
+      let content =
+        O.documentedSrc (O.txt "#{") @ rows @ O.documentedSrc (O.txt "}")
       in
       content
 
@@ -895,6 +944,7 @@ module Make (Syntax : SYNTAX) = struct
               | Extensible -> O.documentedSrc (O.txt "..")
               | Variant cstrs -> variant cstrs
               | Record fields -> record fields
+              | Record_unboxed_product fields -> unboxed_record fields
             in
             if List.length content > 0 then
               O.documentedSrc
@@ -1426,11 +1476,13 @@ module Make (Syntax : SYNTAX) = struct
         match t with
         | Path { p_expansion = None; _ }
         | TypeOf { t_expansion = None; _ }
-        | With { w_expansion = None; _ } ->
+        | With { w_expansion = None; _ }
+        | Strengthen { s_expansion = None; _ } ->
             None
         | Path { p_expansion = Some e; _ }
         | TypeOf { t_expansion = Some e; _ }
-        | With { w_expansion = Some e; _ } ->
+        | With { w_expansion = Some e; _ }
+        | Strengthen { s_expansion = Some e; _ } ->
             Some e
         | Signature sg -> Some (Signature sg)
         | Functor (f_parameter, e) -> (
@@ -1569,6 +1621,8 @@ module Make (Syntax : SYNTAX) = struct
       | TypeOf (ModPath m, _) | TypeOf (StructInclude m, _) ->
           Paths.Path.(is_hidden (m :> t))
       | Signature _ -> false
+      | Strengthen (expr, p, _) ->
+          umty_hidden expr || Paths.Path.(is_hidden (p :> t))
 
     and mty_hidden : Odoc_model.Lang.ModuleType.expr -> bool = function
       | Path { p_path = mty_path; _ } -> Paths.Path.(is_hidden (mty_path :> t))
@@ -1584,6 +1638,10 @@ module Make (Syntax : SYNTAX) = struct
            ~sep:(O.cut ++ O.txt " " ++ O.keyword "and" ++ O.txt " ")
            ~f:(fun x -> O.span (substitution x))
            subs
+
+    and mty_strengthen expr path =
+      umty expr ++ O.sp ++ O.keyword "with" ++ O.txt " "
+      ++ Link.from_path (path :> Paths.Path.t)
 
     and mty_typeof t_desc =
       match t_desc with
@@ -1604,6 +1662,7 @@ module Make (Syntax : SYNTAX) = struct
       | Signature _ -> true
       | With (_, expr) -> is_elidable_with_u expr
       | TypeOf _ -> false
+      | Strengthen (expr,_,_) -> is_elidable_with_u expr
 
     and umty : Odoc_model.Lang.ModuleType.U.expr -> text =
      fun m ->
@@ -1615,6 +1674,9 @@ module Make (Syntax : SYNTAX) = struct
           Syntax.Mod.open_tag ++ O.txt " ... " ++ Syntax.Mod.close_tag
       | With (subs, expr) -> mty_with subs expr
       | TypeOf (t_desc, _) -> mty_typeof t_desc
+      | Strengthen (expr, _, _) when is_elidable_with_u expr ->
+          Syntax.Mod.open_tag ++ O.txt " ... " ++ Syntax.Mod.close_tag
+      | Strengthen (expr, p, _) -> mty_strengthen expr (p :> Paths.Path.t)
 
     and mty : Odoc_model.Lang.ModuleType.expr -> text =
      fun m ->
@@ -1653,12 +1715,15 @@ module Make (Syntax : SYNTAX) = struct
         | TypeOf { t_desc; _ } -> mty_typeof t_desc
         | Signature _ ->
             Syntax.Mod.open_tag ++ O.txt " ... " ++ Syntax.Mod.close_tag
-
+        | Strengthen { s_expr; _ } when is_elidable_with_u s_expr ->
+            Syntax.Mod.open_tag ++ O.txt " ... " ++ Syntax.Mod.close_tag
+        | Strengthen { s_expr; s_path; _ } ->
+            O.box_hv @@ mty_strengthen s_expr (s_path :> Paths.Path.t)
     and mty_in_decl :
         Paths.Identifier.Signature.t -> Odoc_model.Lang.ModuleType.expr -> text
         =
      fun base -> function
-      | (Path _ | Signature _ | With _ | TypeOf _) as m ->
+      | (Path _ | Signature _ | With _ | TypeOf _ | Strengthen _) as m ->
           O.txt Syntax.Type.annotation_separator ++ O.cut ++ mty m
       | Functor _ as m when not Syntax.Mod.functor_contraction ->
           O.txt Syntax.Type.annotation_separator ++ O.cut ++ mty m
@@ -1852,4 +1917,6 @@ module Make (Syntax : SYNTAX) = struct
   let type_expr = type_expr
 
   let record = record
+
+  let unboxed_record = unboxed_record
 end

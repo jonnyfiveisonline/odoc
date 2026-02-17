@@ -31,6 +31,8 @@ type env = Cmi.env = {
 }
 
 
+let cmt_builddir : string ref = ref ""
+
 let read_core_type env ctyp =
   Cmi.read_type_expr env ctyp.ctyp_type
 
@@ -41,17 +43,22 @@ let rec read_pattern env parent doc pat =
     | Tpat_any -> []
 #if OCAML_VERSION < (5,2,0)
     | Tpat_var(id, _) ->
+#elif defined OXCAML
+    | Tpat_var(id, _, _uid, _, _) ->
 #else
-    | Tpat_var(id,_,_uid) ->
+    | Tpat_var(id, _, _uid) ->
 #endif
         let open Value in
         let id = Env.find_value_identifier env.ident_env id in
           Cmi.mark_type_expr pat.pat_type;
           let type_ = Cmi.read_type_expr env pat.pat_type in
           let value = Abstract in
-          [Value {id; source_loc; doc; type_; value}]
+          let source_loc_jane = Some (Odoc_model.Lang.Source_loc_jane.of_location !cmt_builddir pat.pat_loc) in
+          [Value {id; source_loc; doc; type_; value ; source_loc_jane }]
 #if OCAML_VERSION < (5,2, 0)
     | Tpat_alias(pat, id, _) ->
+#elif defined OXCAML
+    | Tpat_alias(pat, id, _, _, _, _, _) ->
 #elif OCAML_VERSION < (5,4,0)
     | Tpat_alias(pat, id, _,_) ->
 #else
@@ -62,13 +69,18 @@ let rec read_pattern env parent doc pat =
           Cmi.mark_type_expr pat.pat_type;
           let type_ = Cmi.read_type_expr env pat.pat_type in
           let value = Abstract in
-          Value {id; source_loc; doc; type_; value} :: read_pattern env parent doc pat
+          let source_loc_jane = Some (Odoc_model.Lang.Source_loc_jane.of_location !cmt_builddir pat.pat_loc) in
+          Value {id; source_loc; doc; type_; value ; source_loc_jane } :: read_pattern env parent doc pat
     | Tpat_constant _ -> []
     | Tpat_tuple pats ->
-#if OCAML_VERSION >= (5, 4, 0)
+#if OCAML_VERSION >= (5, 4, 0) || defined OXCAML
       let pats = List.map snd pats (* remove labels *) in
 #endif
       List.concat (List.map (read_pattern env parent doc) pats)
+#if defined OXCAML
+    | Tpat_unboxed_tuple pats ->
+        List.concat (List.map (fun (_, p, _) -> read_pattern env parent doc p) pats)
+#endif
 #if OCAML_VERSION < (4, 13, 0)
     | Tpat_construct(_, _, pats) ->
 #else
@@ -83,7 +95,14 @@ let rec read_pattern env parent doc pat =
           (List.map
              (fun (_, _, pat) -> read_pattern env parent doc pat)
           pats)
-#if OCAML_VERSION < (5, 4, 0)
+#if defined OXCAML
+    | Tpat_record_unboxed_product(pats, _) ->
+        List.concat
+          (List.map
+             (fun (_, _, pat) -> read_pattern env parent doc pat)
+          pats)
+    | Tpat_array (_, _, pats) ->
+#elif OCAML_VERSION < (5, 4, 0)
     | Tpat_array pats ->
 #else
     | Tpat_array (_, pats) ->
@@ -361,7 +380,8 @@ let read_class_declaration env parent cld =
         clparams
     in
     let type_ = read_class_expr env (id :> Identifier.ClassSignature.t) clparams cld.ci_expr in
-    { id; source_loc; doc; virtual_; params; type_; expansion = None }
+    let source_loc_jane = Some (Odoc_model.Lang.Source_loc_jane.of_location !cmt_builddir cld.ci_loc) in
+    { id; source_loc; doc; virtual_; params; type_; expansion = None ; source_loc_jane}
 
 let read_class_declarations env parent clds =
   let container = (parent : Identifier.Signature.t :> Identifier.LabelParent.t) in
@@ -481,7 +501,8 @@ and read_module_binding env parent mb =
     | Some _, _ -> false
 #endif
   in
-  Some {id; source_loc; doc; type_; canonical; hidden; }
+  let source_loc_jane = Some (Odoc_model.Lang.Source_loc_jane.of_location !cmt_builddir mb.mb_loc) in
+  Some {id; source_loc; doc; type_; canonical; hidden; source_loc_jane}
 
 and read_module_bindings env parent mbs =
   let container = (parent : Identifier.Signature.t :> Identifier.LabelParent.t)
@@ -569,8 +590,16 @@ and read_include env parent incl =
   let container = (parent : Identifier.Signature.t :> Identifier.LabelParent.t) in
   let doc, status = Doc_attr.attached ~warnings_tag:env.warnings_tag Odoc_model.Semantics.Expect_status container incl.incl_attributes in
   let decl_modty =
+#if defined OXCAML
+    match unwrap_module_expr_desc incl.incl_mod.mod_desc, incl.incl_kind with
+    | _, (Tincl_functor _ | Tincl_gen_functor _) ->
+      (* TODO: Handle [include functor] *)
+      None
+    | Tmod_ident(p, _), Tincl_structure ->
+#else
     match unwrap_module_expr_desc incl.incl_mod.mod_desc with
     | Tmod_ident(p, _) ->
+#endif
       let p = Env.Path.read_module env.ident_env p in
       Some (ModuleType.U.TypeOf (ModuleType.StructInclude p, p))
     | _ ->

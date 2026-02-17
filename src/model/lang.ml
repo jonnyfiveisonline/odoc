@@ -16,6 +16,15 @@
 
 open Paths
 
+module Source_loc_jane = struct
+  type t = { filename: string ; line_number: int }
+
+  let of_location (build_dir : string) (loc: Location.t) =
+    let { Location.loc_start ; _ } = loc in
+    let { Lexing.pos_fname ; pos_lnum ; _ } = loc_start in
+    { filename = build_dir ^ "/" ^ pos_fname ; line_number = pos_lnum }
+end
+
 (** {3 Modules} *)
 
 module rec Module : sig
@@ -28,6 +37,7 @@ module rec Module : sig
     source_loc : Identifier.SourceLocation.t option;
         (** Identifier.SourceLocation might not be set when the module is
             artificially constructed from a functor argument. *)
+    source_loc_jane : Source_loc_jane.t option;
     doc : Comment.docs;
     type_ : decl;
     canonical : Path.Module.t option;
@@ -83,6 +93,7 @@ and ModuleType : sig
       | Signature of Signature.t
       | With of substitution list * expr
       | TypeOf of type_of_desc * Path.Module.t
+      | Strengthen of expr * Path.Module.t * bool
   end
 
   type path_t = {
@@ -96,17 +107,26 @@ and ModuleType : sig
     w_expr : U.expr;
   }
 
+  type strengthen_t = {
+    s_expansion : simple_expansion option;
+    s_expr : U.expr;
+    s_path : Path.Module.t;
+    s_aliasable : bool
+  }
+
   type expr =
     | Path of path_t
     | Signature of Signature.t
     | Functor of FunctorParameter.t * expr
     | With of with_t
     | TypeOf of typeof_t
+    | Strengthen of strengthen_t
 
   type t = {
     id : Identifier.ModuleType.t;
     source_loc : Identifier.SourceLocation.t option;
         (** Can be [None] for module types created by a type substitution. *)
+    source_loc_jane : Source_loc_jane.t option;
     doc : Comment.docs;
     canonical : Path.ModuleType.t option;
     expr : expr option;
@@ -213,6 +233,15 @@ and TypeDecl : sig
     }
   end
 
+  module UnboxedField : sig
+    type t = {
+      id : Identifier.UnboxedField.t;
+      doc : Comment.docs;
+      mutable_ : bool;
+      type_ : TypeExpr.t;
+    }
+  end
+
   module Constructor : sig
     type argument = Tuple of TypeExpr.t list | Record of Field.t list
 
@@ -228,6 +257,7 @@ and TypeDecl : sig
     type t =
       | Variant of Constructor.t list
       | Record of Field.t list
+      | Record_unboxed_product of UnboxedField.t list
       | Extensible
   end
 
@@ -253,6 +283,7 @@ and TypeDecl : sig
   type t = {
     id : Identifier.Type.t;
     source_loc : Identifier.SourceLocation.t option;
+    source_loc_jane : Source_loc_jane.t option;
     doc : Comment.docs;
     canonical : Path.Type.t option;
     equation : Equation.t;
@@ -290,6 +321,7 @@ and Exception : sig
   type t = {
     id : Identifier.Exception.t;
     source_loc : Identifier.SourceLocation.t option;
+    source_loc_jane : Source_loc_jane.t option;
     doc : Comment.docs;
     args : TypeDecl.Constructor.argument;
     res : TypeExpr.t option;
@@ -305,6 +337,7 @@ and Value : sig
   type t = {
     id : Identifier.Value.t;
     source_loc : Identifier.SourceLocation.t option;
+    source_loc_jane : Source_loc_jane.t option;
     value : value;
     doc : Comment.docs;
     type_ : TypeExpr.t;
@@ -322,6 +355,7 @@ and Class : sig
   type t = {
     id : Identifier.Class.t;
     source_loc : Identifier.SourceLocation.t option;
+    source_loc_jane : Source_loc_jane.t option;
     doc : Comment.docs;
     virtual_ : bool;
     params : TypeDecl.param list;
@@ -341,6 +375,7 @@ and ClassType : sig
   type t = {
     id : Identifier.ClassType.t;
     source_loc : Identifier.SourceLocation.t option;
+    source_loc_jane : Source_loc_jane.t option;
     doc : Comment.docs;
     virtual_ : bool;
     params : TypeDecl.param list;
@@ -440,11 +475,14 @@ and TypeExpr : sig
     | Alias of t * string
     | Arrow of label option * t * t
     | Tuple of (string option * t) list
+    | Unboxed_tuple of (string option * t) list
     | Constr of Path.Type.t * t list
     | Polymorphic_variant of TypeExpr.Polymorphic_variant.t
     | Object of TypeExpr.Object.t
     | Class of Path.ClassType.t * t list
     | Poly of string list * t
+    | Quote of t
+    | Splice of t
     | Package of TypeExpr.Package.t
 end =
   TypeExpr
@@ -482,12 +520,19 @@ module rec Compilation_unit : sig
     expansion : Signature.t option;
     linked : bool;  (** Whether this unit has been linked. *)
     source_loc : Identifier.SourceLocation.t option;
+    source_loc_jane : Source_loc_jane.t option;
     canonical : Path.Module.t option;
   }
 end =
   Compilation_unit
 
 module rec Source_info : sig
+  type point_in_file = {
+    pos_lnum : int;
+    pos_cnum : int;
+  }
+  type location_in_file = {loc_start : point_in_file ; loc_end: point_in_file}
+
   type 'a jump_to_impl =
     | Unresolved of 'a
     | Resolved of Identifier.SourceLocation.t
@@ -504,7 +549,7 @@ module rec Source_info : sig
     | ModuleType of Path.ModuleType.t jump_to
     | Type of Path.Type.t jump_to
 
-  type 'a with_pos = 'a * (int * int)
+  type 'a with_pos = 'a * location_in_file
 
   type t = annotation with_pos list
 end =
@@ -552,6 +597,8 @@ let umty_of_mty : ModuleType.expr -> ModuleType.U.expr option = function
   | TypeOf { t_desc; t_original_path; _ } ->
       Some (TypeOf (t_desc, t_original_path))
   | With { w_substitutions; w_expr; _ } -> Some (With (w_substitutions, w_expr))
+  | Strengthen { s_expr; s_path; s_aliasable; _ } ->
+      Some (Strengthen (s_expr, s_path, s_aliasable))
 
 (** Query the top-comment of a signature. This is [s.doc] most of the time with
     an exception for signature starting with an inline includes. *)
@@ -560,7 +607,8 @@ let extract_signature_doc (s : Signature.t) =
     | ModuleType.U.Path p -> Path.is_hidden (p :> Path.t)
     | Signature _ ->
         true (* Hidden in some sense, we certainly want its top comment *)
-    | With (_, e) -> uexpr_considered_hidden e
+    | With (_, e)
+    | Strengthen (e, _, _) -> uexpr_considered_hidden e
     | TypeOf (ModPath p, _) | TypeOf (StructInclude p, _) ->
         Path.is_hidden (p :> Path.t)
   in

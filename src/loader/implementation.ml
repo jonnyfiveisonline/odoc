@@ -1,14 +1,23 @@
 #if OCAML_VERSION >= (4, 14, 0)
 
 let rec is_persistent : Path.t -> bool = function
-  | Path.Pident id -> Ident.persistent id
+  | Path.Pident id -> Ident_env.ident_is_global_or_predef id
   | Path.Pdot(p, _) -> is_persistent p
   | Path.Papply(p, _) -> is_persistent p
 #if OCAML_VERSION >= (5,1,0)
   | Path.Pextra_ty (p, _) -> is_persistent p
 #endif
 
-let pos_of_loc loc = (loc.Location.loc_start.pos_cnum, loc.loc_end.pos_cnum)
+let pos_of_loc (loc : Warnings.loc) = {
+  Odoc_model.Lang.Source_info.loc_start = {
+    pos_cnum = loc.loc_start.pos_cnum ;
+    pos_lnum = loc.loc_start.pos_lnum
+  } ;
+  loc_end = {
+    pos_cnum = loc.loc_start.pos_cnum ;
+    pos_lnum = loc.loc_start.pos_lnum
+  }
+}
 
 let counter =
   let c = ref 0 in
@@ -70,6 +79,9 @@ module Env = struct
     | Tmty_signature sg -> signature env (parent : Identifier.Signature.t) sg
     | Tmty_with (mty, _) -> module_type env parent mty
     | Tmty_functor (_, t) -> module_type env parent t
+#if defined OXCAML
+    | Tmty_strengthen (t, _, _) -> module_type env parent t
+#endif
     | Tmty_ident _ | Tmty_alias _ | Tmty_typeof _ -> ()
 
   and module_bindings env parent mbs = List.iter (module_binding env parent) mbs
@@ -207,6 +219,9 @@ let anchor_of_identifier id =
     | `AssetFile _ -> assert false
     | `Field (parent, name) ->
         let anchor = anchor `Field (FieldName.to_string name) in
+        continue anchor parent
+    | `UnboxedField (parent, name) ->
+        let anchor = anchor `UnboxedField (UnboxedFieldName.to_string name) in
         continue anchor parent
     | `SourceLocationMod _ -> assert false
     | `Result parent -> anchor_of_identifier acc (parent :> Identifier.t)

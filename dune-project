@@ -1,4 +1,4 @@
-(lang dune 3.18)
+(lang dune 3.21)
 
 (using dune_site 0.1)
 
