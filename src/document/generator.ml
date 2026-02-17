@@ -441,19 +441,28 @@ module Make (Syntax : SYNTAX) = struct
         if needs_parentheses then enclose ~l:"(" res ~r:")" else res
       in
       match t with
-      | Var (s, _jkind) -> type_var (Syntax.Type.var_prefix ^ s)
+      | Var (s, None) -> type_var (Syntax.Type.var_prefix ^ s)
+      | Var (s, Some jkind) ->
+          enclose ~l:"(" ~r:")"
+            (type_var (Syntax.Type.var_prefix ^ s)
+            ++ O.txt " " ++ O.keyword ":" ++ O.txt " " ++ O.txt jkind)
       | Any -> type_var Syntax.Type.any
       | Alias (te, alias) ->
           enclose_parens_if_needed
             (type_expr ~needs_parentheses:true te
             ++ O.txt " " ++ O.keyword "as" ++ O.txt " '" ++ O.txt alias)
-      | Arrow (None, src, dst, _modes) ->
+      | Arrow (None, src, dst, modes) ->
+          let mode_suffix = match modes with
+            | [] -> O.noop
+            | ms ->
+                O.txt " " ++ O.keyword "@" ++ O.txt " "
+                ++ O.txt (String.concat ~sep:" " ms)
+          in
           let res =
             O.span
-              ((O.box_hv @@ type_expr ~needs_parentheses:true src)
+              ((O.box_hv @@ type_expr ~needs_parentheses:true src ++ mode_suffix)
               ++ O.txt " " ++ Syntax.Type.arrow)
             ++ O.sp ++ type_expr dst
-            (* ++ O.end_hv *)
           in
           if not needs_parentheses then res else enclose ~l:"(" res ~r:")"
       | Arrow (Some (RawOptional _ as lbl), _src, dst, _modes) ->
@@ -466,12 +475,19 @@ module Make (Syntax : SYNTAX) = struct
             ++ O.sp ++ type_expr dst
           in
           if not needs_parentheses then res else enclose ~l:"(" res ~r:")"
-      | Arrow (Some lbl, src, dst, _modes) ->
+      | Arrow (Some lbl, src, dst, modes) ->
+          let mode_suffix = match modes with
+            | [] -> O.noop
+            | ms ->
+                O.txt " " ++ O.keyword "@" ++ O.txt " "
+                ++ O.txt (String.concat ~sep:" " ms)
+          in
           let res =
             O.span
               ((O.box_hv
                @@ label lbl ++ O.txt ":" ++ O.cut
-                  ++ (O.box_hv @@ type_expr ~needs_parentheses:true src))
+                  ++ (O.box_hv @@ type_expr ~needs_parentheses:true src)
+                  ++ mode_suffix)
               ++ O.txt " " ++ Syntax.Type.arrow)
             ++ O.sp ++ type_expr dst
           in
