@@ -1023,11 +1023,11 @@ and type_expr map (parent : Identifier.LabelParent.t) (t : Component.TypeExpr.t)
     : Odoc_model.Lang.TypeExpr.t =
   try
     match t with
-    | Var s -> Var s
+    | Var (s, jk) -> Var (s, jk)
     | Any -> Any
     | Alias (t, str) -> Alias (type_expr map parent t, str)
-    | Arrow (lbl, t1, t2) ->
-        Arrow (lbl, type_expr map parent t1, type_expr map parent t2)
+    | Arrow (lbl, t1, t2, modes) ->
+        Arrow (lbl, type_expr map parent t1, type_expr map parent t2, modes)
     | Tuple ts ->
         Tuple (List.map (fun (lbl, ty) -> (lbl, type_expr map parent ty)) ts)
     | Unboxed_tuple ts ->

@@ -114,10 +114,10 @@ and TypeExpr : sig
   type label = Odoc_model.Lang.TypeExpr.label
 
   type t =
-    | Var of string
+    | Var of string * string option
     | Any
     | Alias of t * string
-    | Arrow of label option * t * t
+    | Arrow of label option * t * t * string list
     | Tuple of (string option * t) list
     | Unboxed_tuple of (string option * t) list
     | Constr of Cpath.type_ * t list

@@ -98,7 +98,7 @@ and type_decl : Cpath.type_ -> TypeDecl.t -> TypeDecl.t =
       List.map
         (fun { Odoc_model.Lang.TypeDecl.desc; _ } ->
           match desc with
-          | Odoc_model.Lang.TypeDecl.Var x -> TypeExpr.Var x
+          | Odoc_model.Lang.TypeDecl.Var x -> TypeExpr.Var (x, None)
           | Any -> Any)
         e.params
     in

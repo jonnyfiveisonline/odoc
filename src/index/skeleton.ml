@@ -54,8 +54,8 @@ module Entry = struct
   let varify_params =
     List.mapi (fun i param ->
         match param.TypeDecl.desc with
-        | Var name -> TypeExpr.Var name
-        | Any -> Var (Printf.sprintf "tv_%i" i))
+        | Var name -> TypeExpr.Var (name, None)
+        | Any -> Var (Printf.sprintf "tv_%i" i, None))
 
   let of_constructor id_parent params source_loc (c : TypeDecl.Constructor.t) =
     let args = c.args in

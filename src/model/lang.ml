@@ -470,10 +470,11 @@ and TypeExpr : sig
   type label = Label of string | RawOptional of string | Optional of string
 
   type t =
-    | Var of string
+    | Var of string * string option  (** name, jkind (e.g. [Some "float64"]) *)
     | Any
     | Alias of t * string
-    | Arrow of label option * t * t
+    | Arrow of label option * t * t * string list
+        (** label, arg, ret, arg_modes (e.g. [["local"; "unique"]]) *)
     | Tuple of (string option * t) list
     | Unboxed_tuple of (string option * t) list
     | Constr of Path.Type.t * t list

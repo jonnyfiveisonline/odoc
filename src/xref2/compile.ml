@@ -878,12 +878,13 @@ and handle_arrow :
     TypeExpr.label option ->
     TypeExpr.t ->
     TypeExpr.t ->
+    string list ->
     TypeExpr.t =
- fun env parent lbl t1 t2 ->
+ fun env parent lbl t1 t2 modes ->
   let t2' = type_expression env parent t2 in
   match lbl with
   | Some (Optional _ | Label _) | None ->
-      Arrow (lbl, type_expression env parent t1, t2')
+      Arrow (lbl, type_expression env parent t1, t2', modes)
   | Some (RawOptional s) -> (
       (* s is definitely an option type, but not _obviously_ so. *)
       match Component.Of_Lang.(type_expression (empty ()) t1) with
@@ -905,10 +906,10 @@ and handle_arrow :
           in
           match find_option p with
           | Some t1 ->
-              Arrow (Some (Optional s), type_expression env parent t1, t2')
+              Arrow (Some (Optional s), type_expression env parent t1, t2', modes)
           | None ->
-              Arrow (Some (RawOptional s), type_expression env parent t1, t2'))
-      | _ -> Arrow (Some (RawOptional s), type_expression env parent t1, t2'))
+              Arrow (Some (RawOptional s), type_expression env parent t1, t2', modes))
+      | _ -> Arrow (Some (RawOptional s), type_expression env parent t1, t2', modes))
 
 and type_expression : Env.t -> Id.LabelParent.t -> _ -> _ =
  fun env parent texpr ->
@@ -916,7 +917,7 @@ and type_expression : Env.t -> Id.LabelParent.t -> _ -> _ =
   match texpr with
   | Var _ | Any -> texpr
   | Alias (t, str) -> Alias (type_expression env parent t, str)
-  | Arrow (lbl, t1, t2) -> handle_arrow env parent lbl t1 t2
+  | Arrow (lbl, t1, t2, modes) -> handle_arrow env parent lbl t1 t2 modes
   | Tuple ts ->
       Tuple
         (List.map (fun (lbl, ty) -> (lbl, type_expression env parent ty)) ts)

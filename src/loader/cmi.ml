@@ -495,7 +495,7 @@ let mark_class_declaration cld =
 let rec read_type_expr env typ =
   let open TypeExpr in
   let px = proxy typ in
-  if used_alias px then Var (name_of_type typ)
+  if used_alias px then Var (name_of_type typ, None)
   else begin
     let alias =
       if not (is_aliased px && aliasable typ) then None
@@ -509,7 +509,7 @@ let rec read_type_expr env typ =
       | Tvar _ ->
           let name = name_of_type typ in
             if name = "_" then Any
-            else Var name
+            else Var (name, None)
 #if defined OXCAML
       | Tarrow((lbl,_,_), arg, res, _) ->
 #else
@@ -535,7 +535,7 @@ let rec read_type_expr env typ =
               lbl, read_type_expr env arg
           in
           let res = read_type_expr env res in
-            Arrow(lbl, arg, res)
+            Arrow(lbl, arg, res, [])
       | Ttuple typs ->
 #if OCAML_VERSION >= (5,4,0) || defined OXCAML
           let typs = List.map (fun (lbl,x) -> lbl, read_type_expr env x) typs in
@@ -562,7 +562,7 @@ let rec read_type_expr env typ =
           let typ = read_type_expr env typ in
             remove_names tyl;
             Poly(vars, typ)
-      | Tunivar _ -> Var (name_of_type typ)
+      | Tunivar _ -> Var (name_of_type typ, None)
 #if OCAML_VERSION>=(5,4,0)
       | Tpackage {pack_path=p; pack_cstrs } ->
         let eqs = List.filter_map (fun (l,ty) -> Option.map (fun x -> x, ty) (Longident.unflatten l)) pack_cstrs in
@@ -669,7 +669,7 @@ and read_object env fi nm =
   let open TypeExpr in
   let open TypeExpr.Object in
   let px = proxy fi in
-  if used_alias px then Var (name_of_type fi)
+  if used_alias px then Var (name_of_type fi, None)
   else begin
     use_alias px;
     match nm with
@@ -984,7 +984,7 @@ let read_instance_variable env parent (name, mutable_, virtual_, typ) =
 let read_self_type sty =
   let px = proxy sty in
   if not (is_aliased px) then None
-  else Some (TypeExpr.Var (name_of_type_repr px))
+  else Some (TypeExpr.Var (name_of_type_repr px, None))
 
 let rec read_class_signature env parent params =
   let open ClassType in function

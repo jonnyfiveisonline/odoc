@@ -648,14 +648,14 @@ and typeexpr_t =
   let open Lang.TypeExpr in
   Variant
     (function
-    | Var x -> C ("Var", x, string)
+    | Var (x, jk) -> C ("Var", (x, jk), Pair (string, Option string))
     | Any -> C0 "Any"
     | Alias (x1, x2) -> C ("Alias", (x1, x2), Pair (typeexpr_t, string))
-    | Arrow (x1, x2, x3) ->
+    | Arrow (x1, x2, x3, x4) ->
         C
           ( "Arrow",
-            (x1, x2, x3),
-            Triple (Option typeexpr_label, typeexpr_t, typeexpr_t) )
+            ((x1, x2), (x3, x4)),
+            Pair (Pair (Option typeexpr_label, typeexpr_t), Pair (typeexpr_t, List string)) )
     | Tuple x -> C ("Tuple", x, List (Pair (Option string, typeexpr_t)))
     | Unboxed_tuple x -> C ("Unboxed_tuple", x, List (Pair (Option string, typeexpr_t)))
     | Constr (x1, x2) ->

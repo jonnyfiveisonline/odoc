@@ -47,10 +47,10 @@ let rec read_core_type env container ctyp =
     (* TODO: presumably we want the layout in these first two cases,
        eventually *)
     | Ttyp_var (None, _layout) -> Any
-    | Ttyp_var (Some s, _layout) -> Var s
+    | Ttyp_var (Some s, _layout) -> Var (s, None)
 #else
     | Ttyp_any -> Any
-    | Ttyp_var s -> Var s
+    | Ttyp_var s -> Var (s, None)
 #endif
     | Ttyp_arrow(lbl, arg, res) ->
         let lbl = read_label lbl in
@@ -70,7 +70,7 @@ let rec read_core_type env container ctyp =
 #endif
         in
         let res = read_core_type env container res in
-          Arrow(lbl, arg, res)
+          Arrow(lbl, arg, res, [])
     | Ttyp_tuple typs ->
 #if OCAML_VERSION >= (5,4,0) || defined OXCAML
         let typs = List.map (fun (lbl,x) -> lbl, read_core_type env container x) typs in

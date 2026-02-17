@@ -526,7 +526,7 @@ module LangUtils = struct
         and type_expr ppf e =
             let open TypeExpr in
             match e with
-            | Var x -> Format.fprintf ppf "%s" x
+            | Var (x, _) -> Format.fprintf ppf "%s" x
             | Constr (p,_args) -> path ppf (p :> Odoc_model.Paths.Path.t)
             | _ -> Format.fprintf ppf "unhandled type_expr"
 
