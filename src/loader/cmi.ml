@@ -492,6 +492,61 @@ let mark_class_declaration cld =
   List.iter mark_type_parameter cld.cty_params;
   mark_class_type cld.cty_params cld.cty_type
 
+#if defined OXCAML
+(** Extract non-default mode strings from an OxCaml argument mode.
+    Replicates the logic from [Printtyp.tree_of_modes]. *)
+let extract_arg_modes marg =
+  let modes = Mode.Alloc.zap_to_legacy marg in
+  let diff = Mode.Alloc.Const.diff modes Mode.Alloc.Const.legacy in
+  (* Apply implied-default elision rules from Printtyp *)
+  let forkable =
+    match modes.areality, modes.forkable with
+    | Local, Unforkable | Global, Forkable -> None
+    | _, _ -> diff.forkable
+  in
+  let yielding =
+    match modes.areality, modes.yielding with
+    | Local, Yielding | Global, Unyielding -> None
+    | _, _ -> diff.yielding
+  in
+  let contention =
+    match modes.visibility, modes.contention with
+    | Immutable, Contended | Read, Shared | Read_write, Uncontended -> None
+    | _, _ -> diff.contention
+  in
+  let portability =
+    match modes.statefulness, modes.portability with
+    | Stateless, Portable | Observing, Shareable | Stateful, Nonportable -> None
+    | _, _ -> diff.portability
+  in
+  let print_opt print a =
+    Option.map (fun v -> Format.asprintf "%a" print v) a
+  in
+  List.filter_map Fun.id
+    [ print_opt Mode.Locality.Const.print diff.areality
+    ; print_opt Mode.Uniqueness.Const.print diff.uniqueness
+    ; print_opt Mode.Linearity.Const.print diff.linearity
+    ; print_opt Mode.Portability.Const.print portability
+    ; print_opt Mode.Contention.Const.print contention
+    ; print_opt Mode.Forkable.Const.print forkable
+    ; print_opt Mode.Yielding.Const.print yielding
+    ; print_opt Mode.Statefulness.Const.print diff.statefulness
+    ; print_opt Mode.Visibility.Const.print diff.visibility ]
+
+(** Extract jkind/layout string from an OxCaml type variable's jkind.
+    Returns [None] for the default [value] layout or unknown layouts. *)
+let extract_jkind_of_tvar jkind =
+  let desc = Jkind.get jkind in
+  match desc.base with
+  | Layout (Sort (Base Value)) -> None  (* default — don't annotate *)
+  | Layout (Sort (Base b)) -> Some (Jkind_types.Sort.to_string_base b)
+  | Layout (Sort (Var _)) -> None  (* sort variable — not determined *)
+  | Layout (Sort (Univar _)) -> None  (* universally quantified sort *)
+  | Layout (Product _) -> None  (* product layout — complex, skip for now *)
+  | Layout Any -> None
+  | Kconstr _ -> None  (* abstract kind — skip *)
+#endif
+
 let rec read_type_expr env typ =
   let open TypeExpr in
   let px = proxy typ in
@@ -506,14 +561,20 @@ let rec read_type_expr env typ =
     in
     let typ =
       match Compat.get_desc typ with
+#if defined OXCAML
+      | Tvar { name; jkind } ->
+          let nm = match name with Some n -> n | None -> name_of_type typ in
+          if nm = "_" then Any
+          else Var (nm, extract_jkind_of_tvar jkind)
+      | Tarrow((lbl, marg, _mret), arg, res, _) ->
+          let arg_modes = extract_arg_modes marg in
+#else
       | Tvar _ ->
           let name = name_of_type typ in
             if name = "_" then Any
             else Var (name, None)
-#if defined OXCAML
-      | Tarrow((lbl,_,_), arg, res, _) ->
-#else
       | Tarrow(lbl, arg, res, _) ->
+          let arg_modes = [] in
 #endif
           let lbl = read_label lbl in
           let lbl,arg =
@@ -535,7 +596,7 @@ let rec read_type_expr env typ =
               lbl, read_type_expr env arg
           in
           let res = read_type_expr env res in
-            Arrow(lbl, arg, res, [])
+            Arrow(lbl, arg, res, arg_modes)
       | Ttuple typs ->
 #if OCAML_VERSION >= (5,4,0) || defined OXCAML
           let typs = List.map (fun (lbl,x) -> lbl, read_type_expr env x) typs in
@@ -562,7 +623,11 @@ let rec read_type_expr env typ =
           let typ = read_type_expr env typ in
             remove_names tyl;
             Poly(vars, typ)
+#if defined OXCAML
+      | Tunivar { jkind; _ } -> Var (name_of_type typ, extract_jkind_of_tvar jkind)
+#else
       | Tunivar _ -> Var (name_of_type typ, None)
+#endif
 #if OCAML_VERSION>=(5,4,0)
       | Tpackage {pack_path=p; pack_cstrs } ->
         let eqs = List.filter_map (fun (l,ty) -> Option.map (fun x -> x, ty) (Longident.unflatten l)) pack_cstrs in

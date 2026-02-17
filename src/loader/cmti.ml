@@ -44,10 +44,15 @@ let rec read_core_type env container ctyp =
   let open TypeExpr in
     match ctyp.ctyp_desc with
 #if defined OXCAML
-    (* TODO: presumably we want the layout in these first two cases,
-       eventually *)
-    | Ttyp_var (None, _layout) -> Any
-    | Ttyp_var (Some s, _layout) -> Var (s, None)
+    | Ttyp_var (None, _jkind_annot) -> Any
+    | Ttyp_var (Some s, jkind_annot) ->
+        let jkind = match jkind_annot with
+          | Some { Parsetree.pjka_desc = Pjk_abbreviation lid; _ } ->
+              let name = Longident.last lid.txt in
+              if name = "value" then None else Some name
+          | _ -> None
+        in
+        Var (s, jkind)
 #else
     | Ttyp_any -> Any
     | Ttyp_var s -> Var (s, None)
